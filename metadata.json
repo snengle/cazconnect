@@ -1,0 +1,5 @@
+{
+  "name": "Caz Connect: A Game of Gravity & Connection",
+  "description": "A modern React and Tailwind CSS implementation of the 'Caz Connect' strategy board game. Features multiple game modes, a challenging AI with several difficulty levels including a 'learning' mode, AI training via simulation, and PWA support.",
+  "requestFramePermissions": []
+}
