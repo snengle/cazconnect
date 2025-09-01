@@ -154,8 +154,8 @@ export const useGameLogic = () => {
     const winSound = useRef<HTMLAudioElement | null>(null);
 
     useEffect(() => {
-        placeSound.current = new Audio('./place.mp3');
-        winSound.current = new Audio('./win.mp3');
+        placeSound.current = new Audio('/place.mp3');
+        winSound.current = new Audio('/win.mp3');
     }, []);
 
     const playSound = useCallback((soundType: 'place' | 'win') => {

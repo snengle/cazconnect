@@ -11,7 +11,7 @@ const VolumeOffIcon: React.FC = () => (
 
 const Mascot: React.FC<{ isThinking: boolean }> = ({ isThinking }) => (
     <img
-        src="./professor-caz.png"
+        src="/professor-caz.png"
         alt="Professor Caz Mascot"
         className={`h-[90px] w-[90px] lg:h-[110px] lg:w-[110px] rounded-2xl shadow-lg flex-shrink-0 transition-opacity duration-500 ${isThinking ? 'animate-pulse' : ''}`}
     />
