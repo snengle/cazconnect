@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useGameLogic } from './hooks/useGameLogic';
 import Header from './components/Header';
@@ -44,6 +43,7 @@ const App: React.FC = () => {
                     lastMove={lastMove}
                     winInfo={winInfo}
                     isThinking={isThinking || isSimulating}
+                    difficulty={difficulty}
                 />
             </main>
 

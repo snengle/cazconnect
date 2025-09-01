@@ -10,13 +10,11 @@ const VolumeOffIcon: React.FC = () => (
 );
 
 const Mascot: React.FC<{ isThinking: boolean }> = ({ isThinking }) => (
-    <div className={`h-[90px] w-[90px] lg:h-[110px] lg:w-[110px] rounded-2xl bg-[#16213e] p-2 shadow-lg flex-shrink-0 flex items-center justify-center transition-opacity duration-500 ${isThinking ? 'animate-pulse' : ''}`}>
-        <svg viewBox="0 0 100 100" className="w-full h-full">
-            <path d="M 50,15 A 35,35 0 1 1 50,85 A 35,35 0 0 1 50,15" fill="none" stroke="#e94560" strokeWidth="8"/>
-            <path d="M 50,30 A 20,20 0 1 1 50,70" fill="none" stroke="#49e8b2" strokeWidth="6"/>
-            <path d="M 30,50 L 50,50" fill="none" stroke="#f9ed69" strokeWidth="6"/>
-        </svg>
-    </div>
+    <img
+        src="./professor-caz.png"
+        alt="Professor Caz Mascot"
+        className={`h-[90px] w-[90px] lg:h-[110px] lg:w-[110px] rounded-2xl shadow-lg flex-shrink-0 transition-opacity duration-500 ${isThinking ? 'animate-pulse' : ''}`}
+    />
 );
 
 interface HeaderProps {

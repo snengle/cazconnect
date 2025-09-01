@@ -52,19 +52,72 @@ const getValidMoves = (board: BoardState, movesMade: number): Move[] => {
 };
 
 const checkWin = (player: Player, board: BoardState): WinInfo => {
-    const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+    // Directions to check: horizontal, vertical, diagonal down-right, diagonal down-left
+    const directions = [
+        { r: 0, c: 1 },
+        { r: 1, c: 0 },
+        { r: 1, c: 1 },
+        { r: 1, c: -1 },
+    ];
+
     for (let r = 0; r < BOARD_SIZE; r++) {
         for (let c = 0; c < BOARD_SIZE; c++) {
-            for (const [dr, dc] of directions) {
-                if (c + 3 * dc >= 0 && c + 3 * dc < BOARD_SIZE && r + 3 * dr >= 0 && r + 3 * dr < BOARD_SIZE) {
-                    if ([0, 1, 2, 3].every(i => board[r + i * dr][c + i * dc] === player)) {
-                        return Array(4).fill(null).map((_, i) => ({ r: r + i * dr, c: c + i * dc }));
+            if (board[r][c] !== player) {
+                continue;
+            }
+
+            for (const dir of directions) {
+                const line: Move[] = [{ r, c }];
+                for (let i = 1; i < 4; i++) {
+                    const nextR = r + i * dir.r;
+                    const nextC = c + i * dir.c;
+                    if (
+                        nextR >= 0 && nextR < BOARD_SIZE &&
+                        nextC >= 0 && nextC < BOARD_SIZE &&
+                        board[nextR][nextC] === player
+                    ) {
+                        line.push({ r: nextR, c: nextC });
+                    } else {
+                        break;
                     }
+                }
+
+                if (line.length === 4) {
+                    // Found a win. Now, extend the line in both directions.
+                    // Extend backwards from the starting point
+                    let prevR = r - dir.r;
+                    let prevC = c - dir.c;
+                    while (
+                        prevR >= 0 && prevR < BOARD_SIZE &&
+                        prevC >= 0 && prevC < BOARD_SIZE &&
+                        board[prevR][prevC] === player
+                    ) {
+                        line.unshift({ r: prevR, c: prevC });
+                        prevR -= dir.r;
+                        prevC -= dir.c;
+                    }
+                    
+                    // Extend forwards from the last piece of the initial 4
+                    const lastPiece = line[line.length - 1];
+                    let nextR = lastPiece.r + dir.r;
+                    let nextC = lastPiece.c + dir.c;
+                     while (
+                        nextR >= 0 && nextR < BOARD_SIZE &&
+                        nextC >= 0 && nextC < BOARD_SIZE &&
+                        board[nextR][nextC] === player
+                    ) {
+                        line.push({ r: nextR, c: nextC });
+                        nextR += dir.r;
+                        nextC += dir.c;
+                    }
+                    
+                    return line;
                 }
             }
         }
     }
-    return null;
+
+    return null; // No win found
 };
 
 
@@ -84,7 +137,7 @@ export const useGameLogic = () => {
     const [isThinking, setIsThinking] = useState(false);
     const [moveHistory, setMoveHistory] = useState<MoveHistoryItem[]>([]);
     const [gameMemory, setGameMemory] = useState<GameMemory>({ wins: [], losses: [] });
-    const [isSimulating, setIsSimulating] = useState(false);
+    const isSimulatingRef = useRef(false);
     const [simulationStatus, setSimulationStatus] = useState('');
     const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
     const [isInstallPromptVisible, setIsInstallPromptVisible] = useState(false);
@@ -188,6 +241,28 @@ export const useGameLogic = () => {
         
     const validMoves = useMemo(() => getValidMoves(board, movesMade), [board, movesMade]);
 
+    const recordGameResult = (history: MoveHistoryItem[], winner: Player | null) => {
+        const moveString = history.map(m => `${m.player}:${m.r},${m.c}`).join(';');
+        setGameMemory(prevMemory => {
+            const newMemory = { ...prevMemory };
+            if (winner === AI_PLAYER) {
+                if (!newMemory.wins.some(w => w.moves === moveString)) {
+                    newMemory.wins = [...newMemory.wins, { moves: moveString }];
+                }
+            } else if (winner === HUMAN_PLAYER) {
+                if (!newMemory.losses.some(l => l.moves === moveString)) {
+                    newMemory.losses = [...newMemory.losses, { moves: moveString }];
+                }
+            }
+            try {
+                localStorage.setItem('cazConnectMemory', JSON.stringify(newMemory));
+            } catch (error) {
+                console.error("Failed to save AI memory to localStorage", error);
+            }
+            return newMemory;
+        });
+    };
+
     const makeMove = useCallback((r: number, c: number) => {
         if (gameOver || board[r][c]) return;
 
@@ -224,34 +299,12 @@ export const useGameLogic = () => {
     }, [board, currentPlayer, gameOver, movesMade, gameMode, moveHistory, playSound]);
 
     const handleCellClick = (r: number, c: number) => {
-        if (isThinking || isSimulating || gameOver) return;
+        if (isThinking || isSimulatingRef.current || gameOver) return;
         if (gameMode === GameMode.PvC && currentPlayer === AI_PLAYER) return;
         
         if (isValidMove(r, c, board, movesMade)) {
             makeMove(r, c);
         }
-    };
-
-    const recordGameResult = (history: MoveHistoryItem[], winner: Player | null) => {
-        const moveString = history.map(m => `${m.player}:${m.r},${m.c}`).join(';');
-        setGameMemory(prevMemory => {
-            const newMemory = { ...prevMemory };
-            if (winner === AI_PLAYER) {
-                if (!newMemory.wins.some(w => w.moves === moveString)) {
-                    newMemory.wins = [...newMemory.wins, { moves: moveString }];
-                }
-            } else if (winner === HUMAN_PLAYER) {
-                if (!newMemory.losses.some(l => l.moves === moveString)) {
-                    newMemory.losses = [...newMemory.losses, { moves: moveString }];
-                }
-            }
-            try {
-                localStorage.setItem('cazConnectMemory', JSON.stringify(newMemory));
-            } catch (error) {
-                console.error("Failed to save AI memory to localStorage", error);
-            }
-            return newMemory;
-        });
     };
     
     // --- AI Logic ---
@@ -259,18 +312,43 @@ export const useGameLogic = () => {
     const scorePositionTactical = (currentBoard: BoardState, player: Player) => {
         let score = 0;
         const opponent = player === AI_PLAYER ? HUMAN_PLAYER : AI_PLAYER;
-        for (let r = 0; r < 8; r++) { for (let c = 0; c < 8; c++) {
-            [[0, 1], [1, 0], [1, 1], [1, -1]].forEach(([dr, dc]) => {
-                if (r + 3 * dr < 8 && r + 3 * dr >= 0 && c + 3 * dc < 8 && c + 3 * dc >= 0) {
-                    const w = [currentBoard[r][c], currentBoard[r + dr][c + dc], currentBoard[r + 2 * dr][c + 2 * dc], currentBoard[r + 3 * dr][c + 3 * dc]];
-                    const pC = w.filter(p => p === player).length, oC = w.filter(p => p === opponent).length, eC = w.filter(p => p === null).length;
-                    if (pC === 4) score += 100000;
-                    else if (pC === 3 && eC === 1) score += 100;
-                    else if (pC === 2 && eC === 2) score += 10;
-                    if (oC === 3 && eC === 1) score -= 800;
-                }
-            });
-        }}
+
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                // Check all 4 directions from each cell
+                [[0, 1], [1, 0], [1, 1], [1, -1]].forEach(([dr, dc]) => {
+                    // Ensure the 4-cell window is on the board
+                    if (r + 3 * dr < BOARD_SIZE && r + 3 * dr >= 0 && c + 3 * dc < BOARD_SIZE && c + 3 * dc >= 0) {
+                        const window = [
+                            currentBoard[r][c],
+                            currentBoard[r + dr][c + dc],
+                            currentBoard[r + 2 * dr][c + 2 * dc],
+                            currentBoard[r + 3 * dr][c + 3 * dc]
+                        ];
+
+                        const playerCount = window.filter(p => p === player).length;
+                        const opponentCount = window.filter(p => p === opponent).length;
+                        const emptyCount = window.filter(p => p === null).length;
+
+                        // Offensive scoring
+                        if (playerCount === 4) {
+                            score += 100000;
+                        } else if (playerCount === 3 && emptyCount === 1) {
+                            score += 100;
+                        } else if (playerCount === 2 && emptyCount === 2) {
+                            score += 10;
+                        }
+
+                        // More aggressive defensive scoring
+                        if (opponentCount === 3 && emptyCount === 1) {
+                            score -= 5000; // Prioritize blocking 3-in-a-rows heavily
+                        } else if (opponentCount === 2 && emptyCount === 2) {
+                            score -= 50;   // Also prioritize blocking open 2-in-a-rows
+                        }
+                    }
+                });
+            }
+        }
         return score;
     };
     
@@ -329,25 +407,30 @@ export const useGameLogic = () => {
         return moves[Math.floor(Math.random() * moves.length)];
     };
     
-    const getLearningMove = (moves: Move[], currentBoard: BoardState, gameHistory: MoveHistoryItem[]) => {
-        const historyString = gameHistory.map(m => `${m.player}:${m.r},${m.c}`).join(';');
+    const getLearningMove = (player: Player, moves: Move[], currentBoard: BoardState, gameHistory: MoveHistoryItem[], currentMovesMade: number, memory: GameMemory, depth: number = 4) => {
+        const opponent = player === PLAYER_X ? PLAYER_O : PLAYER_X;
+        
         const immediateWinMove = moves.find(move => {
-            const tempBoard = currentBoard.map(r => [...r]); tempBoard[move.r][move.c] = AI_PLAYER;
-            return checkWin(AI_PLAYER, tempBoard);
+            const tempBoard = currentBoard.map(r => [...r]); tempBoard[move.r][move.c] = player;
+            return checkWin(player, tempBoard);
         });
         if (immediateWinMove) return immediateWinMove;
 
         const immediateBlockMove = moves.find(move => {
-            const tempBoard = currentBoard.map(r => [...r]); tempBoard[move.r][move.c] = HUMAN_PLAYER;
-            return checkWin(HUMAN_PLAYER, tempBoard);
+            const tempBoard = currentBoard.map(r => [...r]); tempBoard[move.r][move.c] = opponent;
+            return checkWin(opponent, tempBoard);
         });
         if (immediateBlockMove) return immediateBlockMove;
 
+        const historyString = gameHistory.map(m => `${m.player}:${m.r},${m.c}`).join(';');
         const badMoves = new Set<string>();
-        for (const loss of gameMemory.losses) {
-            if (loss.moves.startsWith(historyString)) {
-                const nextMoveStr = loss.moves.substring(historyString.length ? historyString.length + 1 : 0).split(';')[0];
-                if (nextMoveStr && nextMoveStr.startsWith(AI_PLAYER + ':')) {
+
+        const gamesToCheck = player === AI_PLAYER ? memory.losses : memory.wins;
+
+        for (const game of gamesToCheck) {
+            if (game.moves.startsWith(historyString)) {
+                const nextMoveStr = game.moves.substring(historyString.length ? historyString.length + 1 : 0).split(';')[0];
+                if (nextMoveStr && nextMoveStr.startsWith(player + ':')) {
                     badMoves.add(nextMoveStr.substring(2));
                 }
             }
@@ -355,7 +438,8 @@ export const useGameLogic = () => {
 
         const safeMoves = moves.filter(move => !badMoves.has(`${move.r},${move.c}`));
         if (safeMoves.length > 0) {
-            return minimax(currentBoard, movesMade, 4, -Infinity, Infinity, true, scorePositionStrategic, safeMoves).move;
+            const isMaximizing = player === AI_PLAYER;
+            return minimax(currentBoard, currentMovesMade, depth, -Infinity, Infinity, isMaximizing, scorePositionStrategic, safeMoves).move;
         }
         
         return moves[Math.floor(Math.random() * moves.length)];
@@ -377,7 +461,7 @@ export const useGameLogic = () => {
         if (difficulty === Difficulty.Easy) {
             bestMove = getEasyMove(validMoves, board);
         } else if (difficulty === Difficulty.Learning) {
-            bestMove = getLearningMove(validMoves, board, moveHistory);
+            bestMove = getLearningMove(AI_PLAYER, validMoves, board, moveHistory, movesMade, gameMemory);
         } else {
             const setting = difficultySettings[difficulty];
             const scoringFunction = setting.strategic ? scorePositionStrategic : scorePositionTactical;
@@ -392,7 +476,7 @@ export const useGameLogic = () => {
             }
             setIsThinking(false);
         }, 100);
-    }, [validMoves, difficulty, board, movesMade, makeMove, moveHistory, gameMemory.losses]);
+    }, [validMoves, difficulty, board, movesMade, makeMove, moveHistory, gameMemory]);
     
     useEffect(() => {
         if (!gameOver && gameMode === GameMode.PvC && currentPlayer === AI_PLAYER) {
@@ -403,7 +487,7 @@ export const useGameLogic = () => {
     }, [currentPlayer, gameOver, gameMode, computerMove]);
 
     const gameStatus = useMemo(() => {
-        if (isSimulating) return simulationStatus;
+        if (isSimulatingRef.current) return simulationStatus;
         if (gameOver) {
             if (winInfo) {
                 const winner = board[winInfo[0].r][winInfo[0].c];
@@ -413,10 +497,10 @@ export const useGameLogic = () => {
         }
         if (isThinking) return "Professor Caz is thinking...";
         return `Player ${currentPlayer}'s Turn`;
-    }, [gameOver, winInfo, board, currentPlayer, isThinking, isSimulating, simulationStatus]);
+    }, [gameOver, winInfo, board, currentPlayer, isThinking, simulationStatus]);
     
     // --- Simulation Logic ---
-    const playSimulationGame = (): Promise<void> => {
+    const playSimulationGame = (memory: GameMemory): Promise<{ history: MoveHistoryItem[], winner: Player | null } | null> => {
         return new Promise(resolve => {
             let simBoard = createInitialBoard();
             let simCurrentPlayer = Math.random() < 0.5 ? PLAYER_X : PLAYER_O;
@@ -424,33 +508,30 @@ export const useGameLogic = () => {
             let simHistory: MoveHistoryItem[] = [];
 
             const gameLoop = () => {
-                if (!isSimulating) {
-                    resolve();
+                if (!isSimulatingRef.current) {
+                    resolve(null);
                     return;
                 }
                 const validSimMoves = getValidMoves(simBoard, simMovesMade);
                 if (validSimMoves.length === 0) {
-                    recordGameResult(simHistory, null);
-                    resolve();
+                    resolve({ history: simHistory, winner: null });
                     return;
                 }
-                let move: Move | undefined;
-                if (simCurrentPlayer === AI_PLAYER) {
-                    move = getLearningMove(validSimMoves, simBoard, simHistory);
-                } else {
-                    move = minimax(simBoard, simMovesMade, 2, -Infinity, Infinity, false, scorePositionTactical).move;
-                }
+                
+                let move: Move | undefined = getLearningMove(simCurrentPlayer, validSimMoves, simBoard, simHistory, simMovesMade, memory, 4);
+
                 if (!move) move = validSimMoves[Math.floor(Math.random() * validSimMoves.length)];
 
                 simBoard[move.r][move.c] = simCurrentPlayer;
                 simMovesMade++;
                 simHistory.push({ player: simCurrentPlayer, r: move.r, c: move.c });
 
-                if (checkWin(simCurrentPlayer, simBoard)) {
-                    recordGameResult(simHistory, simCurrentPlayer);
-                    resolve();
+                const winner = checkWin(simCurrentPlayer, simBoard);
+                if (winner) {
+                    resolve({ history: simHistory, winner: simCurrentPlayer });
                     return;
                 }
+
                 simCurrentPlayer = (simCurrentPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
                 
                 setTimeout(gameLoop, 0);
@@ -460,19 +541,50 @@ export const useGameLogic = () => {
     };
     
     const startSimulation = async (gamesToPlay: number) => {
-        setIsSimulating(true);
+        isSimulatingRef.current = true;
+        // Force a re-render to update UI
+        setSimulationStatus('Starting simulation...');
+
+        let currentMemory: GameMemory = JSON.parse(JSON.stringify(gameMemory));
+
         for (let i = 1; i <= gamesToPlay; i++) {
-            if (!isSimulating) break;
+            if (!isSimulatingRef.current) break;
             setSimulationStatus(`Simulating Game ${i} of ${gamesToPlay}...`);
-            await playSimulationGame();
+            
+            const gameResult = await playSimulationGame(currentMemory);
+
+            if (gameResult) {
+                const { history, winner } = gameResult;
+                const moveString = history.map(m => `${m.player}:${m.r},${m.c}`).join(';');
+                
+                if (winner === AI_PLAYER) {
+                    if (!currentMemory.wins.some(w => w.moves === moveString)) {
+                        currentMemory.wins.push({ moves: moveString });
+                    }
+                } else if (winner === HUMAN_PLAYER) {
+                    if (!currentMemory.losses.some(l => l.moves === moveString)) {
+                        currentMemory.losses.push({ moves: moveString });
+                    }
+                }
+            }
         }
-        setIsSimulating(false);
+
+        setGameMemory(currentMemory);
+        try {
+            localStorage.setItem('cazConnectMemory', JSON.stringify(currentMemory));
+        } catch (error) {
+            console.error("Failed to save AI memory to localStorage", error);
+        }
+
+        isSimulatingRef.current = false;
         setSimulationStatus('');
-        alert(`AI training complete! Memory now has ${gameMemory.wins.length} winning paths and ${gameMemory.losses.length} losing paths.`);
+        alert(`AI training complete! Memory now has ${currentMemory.wins.length} winning paths and ${currentMemory.losses.length} losing paths.`);
         resetGame();
     };
 
-    const stopSimulation = () => setIsSimulating(false);
+    const stopSimulation = () => {
+        isSimulatingRef.current = false;
+    };
 
     const exportMemory = () => {
         const memoryString = JSON.stringify(gameMemory, null, 2);
@@ -515,7 +627,7 @@ export const useGameLogic = () => {
         lastMove,
         winInfo,
         isThinking,
-        isSimulating,
+        isSimulating: isSimulatingRef.current,
         gameMode,
         difficulty,
         isMuted,
